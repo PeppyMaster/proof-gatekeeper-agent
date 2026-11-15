@@ -211,6 +211,36 @@ async function handleTask(body) {
   return response;
 }
 
+// ---------- raw body reading (multi-shape: Vercel's server runtime does not
+// deliver a plain Node stream in the way `for await` expects — it stalls) ----
+async function readRawBody(req) {
+  if (req.rawBody) return Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(req.rawBody);
+  if (req.body !== undefined && req.body !== null && typeof req.on !== "function") {
+    if (Buffer.isBuffer(req.body)) return req.body;
+    if (typeof req.body === "string") return Buffer.from(req.body);
+    return Buffer.from(JSON.stringify(req.body));
+  }
+  if (typeof req.text === "function" && typeof req.on !== "function") {
+    return Buffer.from(await req.text());
+  }
+  const chunks = [];
+  await new Promise((resolve, reject) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    req.on("end", finish);
+    req.on("error", (e) => { if (!done) { done = true; reject(e); } });
+    if (req.readableEnded) finish();
+    setTimeout(finish, 10000); // never hang past the platform's patience
+  });
+  if (chunks.length === 0 && req.body !== undefined && req.body !== null) {
+    if (Buffer.isBuffer(req.body)) return req.body;
+    if (typeof req.body === "string") return Buffer.from(req.body);
+    if (typeof req.body === "object") return Buffer.from(JSON.stringify(req.body));
+  }
+  return Buffer.concat(chunks);
+}
+
 // ---------- handler ----------
 async function handler(req, res) {
   const send = (code, obj) => {
@@ -226,9 +256,7 @@ async function handler(req, res) {
   }
   if (req.method !== "POST") return send(405, { error: "method_not_allowed" });
 
-  const chunks = [];
-  for await (const c of req) chunks.push(c);
-  const raw = Buffer.concat(chunks);
+  const raw = await readRawBody(req);
 
   if (SECRET) {
     const sig = req.headers["x-agent-games-signature"] || req.headers["x-signature"] || "";
