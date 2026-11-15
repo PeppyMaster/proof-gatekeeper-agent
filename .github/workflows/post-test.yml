@@ -4,15 +4,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      AGENT_SECRET: ${{ secrets.AGENT_SECRET }}
     steps:
-      - name: GET health (control)
+      - name: POST signed valid task
         run: |
-          curl -sS -m 30 -w '\nHTTP_STATUS:%{http_code}\n' https://proof-gatekeeper-agent-iota.vercel.app/
-      - name: POST preflight
+          printf '%s' '{"type":"agent-games.proof-gatekeeper.v1","task_id":"gk_24_9d1","mode":"practice","input":{"registered_vk":"0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0","proof_vk":"0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0","minimum":"1000","public_balance":"1460","expiry_block":"19842201","current_block":"19832000","recipient":"0xDe42000000000000000000000000000000009f01","condition_recipient":"0xDe42000000000000000000000000000000009f01","amount":"500","max_transfer":"1000","proof_tx":"0xghasigned01"}}' > /tmp/body.json
+          SIG=$(node -e "const c=require('crypto');const fs=require('fs');console.log(c.createHmac('sha256',process.env.AGENT_SECRET).update(fs.readFileSync('/tmp/body.json')).digest('hex'))")
+          curl -sS -m 90 -D /tmp/headers.txt -o /tmp/resp.json -w 'HTTP_STATUS:%{http_code}\n' -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -H "x-agent-games-signature: $SIG" --data-binary @/tmp/body.json
+          grep -i 'x-agent-games-signature' /tmp/headers.txt || echo 'NO RESPONSE SIGNATURE HEADER'
+          node -e "const c=require('crypto');const fs=require('fs');const raw=fs.readFileSync('/tmp/resp.json');const r=JSON.parse(raw);const h=fs.readFileSync('/tmp/headers.txt','utf8');const m=h.match(/x-agent-games-signature:\s*(\S+)/i);const exp=m?c.createHmac('sha256',process.env.AGENT_SECRET).update(raw).digest('hex'):null;console.log('decision:',r.decision,'| reason:',r.reason_code,'| has proof:',!!r.proof,'| signals:',(r.public_signals||[]).length,'| response signature valid:',exp!==null&&exp===m[1])"
+      - name: POST bad signature (expect 401)
         run: |
-          curl -sS -m 30 -w '\nHTTP_STATUS:%{http_code}\n' -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -d '{"type":"agent-games.preflight","hello":"world"}'
-      - name: POST valid task
-        run: |
-          curl -sS -m 90 -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -d '{"type":"agent-games.proof-gatekeeper.v1","task_id":"gk_24_9d1","mode":"practice","input":{"registered_vk":"0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0","proof_vk":"0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0","minimum":"1000","public_balance":"1460","expiry_block":"19842201","current_block":"19832000","recipient":"0xDe42000000000000000000000000000000009f01","condition_recipient":"0xDe42000000000000000000000000000000009f01","amount":"500","max_transfer":"1000","proof_tx":"0xghatest01"}}' > /tmp/resp.json
-          head -c 300 /tmp/resp.json; echo
-          node -e "const r=require('/tmp/resp.json'); console.log('decision:', r.decision, '| reason:', r.reason_code, '| has proof:', !!r.proof, '| signals:', (r.public_signals||[]).length)"
+          curl -sS -m 30 -o /tmp/bad.json -w 'HTTP_STATUS:%{http_code}\n' -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -H 'x-agent-games-signature: deadbeef' -d '{"type":"agent-games.preflight","hello":"world"}'
+          cat /tmp/bad.json; echo
