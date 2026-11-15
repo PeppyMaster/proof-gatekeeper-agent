@@ -6,9 +6,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: GET health (control)
-        run: curl -sS -m 30 -w '\nHTTP_STATUS:%{http_code}\n' https://proof-gatekeeper-agent-iota.vercel.app/
+        run: |
+          curl -sS -m 30 -w '\nHTTP_STATUS:%{http_code}\n' https://proof-gatekeeper-agent-iota.vercel.app/
       - name: POST preflight
-        run: curl -sS -m 30 -w '\nHTTP_STATUS:%{http_code}\n' -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -d '{"type":"agent-games.preflight","hello":"world"}'
+        run: |
+          curl -sS -m 30 -w '\nHTTP_STATUS:%{http_code}\n' -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -d '{"type":"agent-games.preflight","hello":"world"}'
       - name: POST valid task
         run: |
           curl -sS -m 90 -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -d '{"type":"agent-games.proof-gatekeeper.v1","task_id":"gk_24_9d1","mode":"practice","input":{"registered_vk":"0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0","proof_vk":"0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0","minimum":"1000","public_balance":"1460","expiry_block":"19842201","current_block":"19832000","recipient":"0xDe42000000000000000000000000000000009f01","condition_recipient":"0xDe42000000000000000000000000000000009f01","amount":"500","max_transfer":"1000","proof_tx":"0xghatest01"}}' > /tmp/resp.json
