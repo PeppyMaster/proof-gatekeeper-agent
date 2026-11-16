@@ -273,9 +273,9 @@ async function handler(req, res) {
   }
   const inp = body && (body.input || (body.payload && body.payload.input));
   if (!inp || typeof inp !== "object" || !("proof_tx" in inp || "registered_vk" in inp)) {
-    // Preflight / unknown envelope: acknowledge, signed, without deciding.
+    // Preflight / unknown envelope: signed protocol-v1 JSON (platform requirement).
     log({ kind: "preflight_or_unknown", type: body && body.type, mode: body && body.mode });
-    return send(200, { status: "ok", type: body && body.type ? body.type : null });
+    return send(200, { ok: true, protocolVersion: "v1" });
   }
   try {
     const response = await handleTask(body);
