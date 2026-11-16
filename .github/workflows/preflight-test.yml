@@ -1,0 +1,16 @@
+name: preflight-test
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      AGENT_SECRET: ${{ secrets.AGENT_SECRET }}
+    steps:
+      - name: POST signed preflight (expect protocol-v1)
+        run: |
+          printf '%s' '{"type":"agent-games.preflight"}' > /tmp/pf.json
+          SIG=$(node -e "const c=require('crypto');const fs=require('fs');console.log(c.createHmac('sha256',process.env.AGENT_SECRET).update(fs.readFileSync('/tmp/pf.json')).digest('hex'))")
+          curl -sS -m 30 -D /tmp/pfh.txt -o /tmp/pfr.json -w 'HTTP_STATUS:%{http_code}\n' -X POST https://proof-gatekeeper-agent-iota.vercel.app/ -H 'content-type: application/json' -H "x-agent-games-signature: $SIG" --data-binary @/tmp/pf.json
+          cat /tmp/pfr.json; echo
+          node -e "const c=require('crypto');const fs=require('fs');const raw=fs.readFileSync('/tmp/pfr.json');const r=JSON.parse(raw);const h=fs.readFileSync('/tmp/pfh.txt','utf8');const m=h.match(/x-agent-games-signature:\s*(\S+)/i);const exp=m?c.createHmac('sha256',process.env.AGENT_SECRET).update(raw).digest('hex'):null;console.log('body ok:', r.ok===true&&r.protocolVersion==='v1', '| response signature valid:', exp!==null&&exp===m[1])"
